@@ -10,6 +10,11 @@ import android.widget.EditText;
 import android.widget.TextView;
 
 
+import com.github.nkzawa.emitter.Emitter;
+import com.github.nkzawa.socketio.client.IO;
+import com.github.nkzawa.socketio.client.Socket;
+import com.squareup.okhttp.internal.Util;
+
 import org.json.JSONException;
 import org.json.JSONObject;
 import org.webrtc.DataChannel;
@@ -20,344 +25,49 @@ import org.webrtc.PeerConnection;
 import org.webrtc.PeerConnectionFactory;
 import org.webrtc.SdpObserver;
 import org.webrtc.SessionDescription;
+import org.webrtc.VideoRenderer;
+import org.webrtc.VideoTrack;
 
+import java.net.URISyntaxException;
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Timer;
 import java.util.TimerTask;
 
+import static org.webrtc.SessionDescription.Type.ANSWER;
+import static org.webrtc.SessionDescription.Type.OFFER;
+
 public class LocalPeerConnectionActivity extends AppCompatActivity {
 
-    private static final String TAG = "MainActivity";
+    //My vars
+    private final String MESSAGE = "message";
+    private final String RESPONSE = "server_response";
+    private final String SET_ID    = "set_id";
+    private Connection connection = Connection.getInstance();
 
+    // Activity elements
+    private EditText mCalleEditText;
+    private Button mSendButton;
+    private TextView mStatusTextView;
+    private EditText mMessageEditText;
+
+
+
+    private PeerConnection peerConnection;
     private PeerConnectionFactory peerConnectionFactory;
 
-    private PeerConnection localPeerConnection;
-    private PeerConnection remotePeerConnection;
 
-    private String localMessageReceived = " ";
-    private String remoteMessageReceived = " ";
+    //----------------------------------------------------
 
-    private String localLastMessageReceived = " ";
-    private String remoteLastMessageReceived = " ";
 
+    //Previously vars
+    private static final String TAG = "Debug";
 
 
     private DataChannel sendChannel;
     private DataChannel receiveChannel;
-
-    PeerConnection.Observer localPeerConnectionObserver = new PeerConnection.Observer() {
-        @Override
-        public void onSignalingChange(PeerConnection.SignalingState signalingState) {
-            Log.d(TAG, "localPeerConnectionObserver onSignalingChange() " + signalingState.name());
-        }
-
-        @Override
-        public void onIceConnectionChange(PeerConnection.IceConnectionState iceConnectionState) {
-            Log.d(TAG, "localPeerConnectionObserver onIceConnectionChange() " + iceConnectionState.name());
-        }
-
-        @Override
-        public void onIceConnectionReceivingChange(boolean b) {
-            Log.d(TAG, "localPeerConnectionObserver onIceConnectionReceivingChange(): " + b);
-        }
-
-        @Override
-        public void onIceGatheringChange(PeerConnection.IceGatheringState iceGatheringState) {
-            Log.d(TAG, "localPeerConnectionObserver onIceGatheringChange() " + iceGatheringState.name());
-        }
-
-        @Override
-        public void onIceCandidate(IceCandidate iceCandidate) {
-            Log.d(TAG, "localPeerConnectionObserver onIceCandidate: " + iceCandidate.toString());
-
-            JSONObject json = new JSONObject();
-
-            String mes;
-
-            try {
-                json.put("type", "candidate");
-                json.put("sdpMLineIndex", iceCandidate.sdpMLineIndex);
-                json.put("sdpMid", iceCandidate.sdpMid);
-                json.put("candidate", iceCandidate.sdp);
-
-                mes = json.toString();
-
-                Log.d (TAG, "local iceCandidateJson" + mes);
-
-                // Here, send a mes to the other party in the WebSocket, etc.
-                // On the receiving side,
-
-                JSONObject json2 = new  JSONObject (mes);
-                IceCandidate candidate = new IceCandidate(json2.getString("sdpMid"), json2.getInt("sdpMLineIndex"), json2.getString("candidate"));
-                remotePeerConnection.addIceCandidate (candidate);
-
-            } catch (org.json.JSONException ex) {
-                Log.d(TAG, ex.toString());
-            }
-        }
-
-        @Override
-        public void onAddStream(MediaStream mediaStream) {
-
-        }
-
-        @Override
-        public void onRemoveStream(MediaStream mediaStream) {
-
-        }
-
-        @Override
-        public void onDataChannel(DataChannel dataChannel) {
-            Log.d(TAG, "localPeerConnectionObserver onDataChannel()");
-        }
-
-        @Override
-        public void onRenegotiationNeeded() {
-            Log.d(TAG, "localPeerConnectionObserver onRenegotiationNeeded()");
-        }
-    };
-
-    PeerConnection.Observer remotePeerConnectionObserver = new PeerConnection.Observer() {
-        @Override
-        public void onSignalingChange(PeerConnection.SignalingState signalingState) {
-            Log.d(TAG, "remotePeerConnectionObserver onSignalingChange() " + signalingState.name());
-        }
-
-        @Override
-        public void onIceConnectionChange(PeerConnection.IceConnectionState iceConnectionState) {
-            Log.d(TAG, "remotePeerConnectionObserver onIceConnectionChange() " + iceConnectionState.name());
-        }
-
-        @Override
-        public void onIceConnectionReceivingChange(boolean b) {
-            Log.d(TAG, "remotePeerConnectionObserver onIceConnectionReceivingChange(): " + b);
-        }
-
-        @Override
-        public void onIceGatheringChange(PeerConnection.IceGatheringState iceGatheringState) {
-            Log.d(TAG, "remotePeerConnectionObserver onIceGatheringChange() " + iceGatheringState.name());
-        }
-
-        @Override
-        public void onIceCandidate(IceCandidate iceCandidate) {
-            Log.d(TAG, "remotePeerConnectionObserver onIceCandidate: " + iceCandidate.toString());
-
-            JSONObject json = new JSONObject();
-
-            String message;
-
-            try {
-                json.put("type", "candidate");
-                json.put("sdpMLineIndex", iceCandidate.sdpMLineIndex);
-                json.put("sdpMid", iceCandidate.sdpMid);
-                json.put("candidate", iceCandidate.sdp);
-
-                message = json.toString();
-
-                Log.d (TAG, "remote iceCandidateJson" + message);
-
-                // Here, send a message to the other party in the WebSocket, etc.
-                // On the receiving side,
-
-                JSONObject json2 = new  JSONObject (message);
-                IceCandidate candidate = new IceCandidate(json2.getString("sdpMid"), json2.getInt("sdpMLineIndex"), json2.getString("candidate"));
-                localPeerConnection.addIceCandidate (candidate);
-
-            } catch (org.json.JSONException ex) {
-                Log.d(TAG, ex.toString());
-            }
-        }
-
-        @Override
-        public void onAddStream(MediaStream mediaStream) {
-
-        }
-
-        @Override
-        public void onRemoveStream(MediaStream mediaStream) {
-
-        }
-
-        @Override
-        public void onDataChannel(DataChannel dataChannel) {
-            Log.d(TAG, "remotePeerConnectionObserver onDataChannel()");
-            receiveChannel = dataChannel;
-            receiveChannel.registerObserver(remoteDataChannelObserver);
-        }
-
-        @Override
-        public void onRenegotiationNeeded() {
-            Log.d(TAG, "remotePeerConnectionObserver onRenegotiationNeeded()");
-        }
-    };
-
-    SdpObserver localSessionObserver = new SdpObserver() {
-        @Override
-        public void onCreateSuccess(SessionDescription sessionDescription) {
-            Log.d(TAG, "local onCreateSuccess");
-
-            localPeerConnection.setLocalDescription(localSessionObserver, sessionDescription);
-
-            JSONObject json = new JSONObject();
-            String message;
-
-            try {
-                json.put("type", sessionDescription.type.toString().toLowerCase());
-                json.put("sdp", sessionDescription.description);
-
-                message = json.toString();
-                Log.d(TAG, message);
-
-                /** Here we implement the signaling mecanism that will pass and retrieve the sdp message**/
-
-                JSONObject json2 = new JSONObject(message);
-                String type = json2.getString("type");
-                String sdp = json2.getString("sdp");
-
-                SessionDescription sdp2 = new SessionDescription(SessionDescription.Type.fromCanonicalForm(type), sdp);
-
-                remotePeerConnection.setRemoteDescription(remoteSessionObserver, sdp2);
-                MediaConstraints constraints = new MediaConstraints();
-                remotePeerConnection.createAnswer(remoteSessionObserver, constraints);
-
-            } catch (JSONException e) {
-                e.printStackTrace();
-            }
-        }
-
-        @Override
-        public void onSetSuccess() {
-            Log.d(TAG, "local onSetSuccess");
-        }
-
-        @Override
-        public void onCreateFailure(String s) {
-            Log.d(TAG, "local onCreateFailure " + s);
-        }
-
-        @Override
-        public void onSetFailure(String s) {
-            Log.d(TAG, "local onSetFailure " + s);
-        }
-    };
-
-    SdpObserver remoteSessionObserver = new SdpObserver() {
-        @Override
-        public void onCreateSuccess(SessionDescription sessionDescription) {
-            Log.d(TAG, "remote onCreateSuccess()");
-
-            remotePeerConnection.setLocalDescription(remoteSessionObserver, sessionDescription);
-
-            JSONObject json = new JSONObject();
-            String message;
-
-            try {
-                json.put("type", sessionDescription.type.toString().toLowerCase());
-                json.put("sdp", sessionDescription.description);
-
-                message = json.toString();
-                Log.d(TAG, message);
-
-                /**Signaling Mechanism to exchange SessionDescription object information goes here**/
-
-                JSONObject json2 = new JSONObject(message);
-                String type = json2.getString("type");
-                String sdp = json2.getString("sdp");
-
-                SessionDescription sdp2 = new SessionDescription(SessionDescription.Type.fromCanonicalForm(type), sdp);
-                localPeerConnection.setRemoteDescription(localSessionObserver, sdp2);
-
-
-            } catch (JSONException e) {
-                e.printStackTrace();
-            }
-        }
-
-        @Override
-        public void onSetSuccess() {
-            Log.d(TAG, "remote onSetSuccess()");
-        }
-
-        @Override
-        public void onCreateFailure(String s) {
-            Log.d(TAG, "remote onCreateFailure() " + s);
-        }
-
-        @Override
-        public void onSetFailure(String s) {
-            Log.d(TAG, "remote onSetFailure()");
-        }
-    };
-
-    DataChannel.Observer localDataChannelObserver = new DataChannel.Observer() {
-
-        @Override
-        public void onBufferedAmountChange(long l) {
-
-        }
-
-        @Override
-        public void onStateChange() {
-            Log.d(TAG, "localDataChannelObserver onStateChange() " + sendChannel.state().name());
-
-//            if (sendChannel.state() == DataChannel.State.OPEN) {
-//                String data = "from sendChannel to receiveChannel";
-//                ByteBuffer buffer = ByteBuffer.wrap(data.getBytes());
-//                sendChannel.send(new DataChannel.Buffer(buffer, false));
-//            }
-        }
-
-        @Override
-        public void onMessage(DataChannel.Buffer buffer) {
-            Log.d(TAG, "localDataChannelObserver onMessage()");
-
-            if (!buffer.binary) {
-                int limit = buffer.data.limit();
-                byte[] datas = new byte[limit];
-                buffer.data.get(datas);
-                localMessageReceived = new String(datas);
-
-            }
-
-        }
-    };
-
-    DataChannel.Observer remoteDataChannelObserver = new DataChannel.Observer() {
-        @Override
-        public void onBufferedAmountChange(long l) {
-
-
-        }
-
-        @Override
-        public void onStateChange() {
-            Log.d(TAG, "remoteDataChannel onStateChange() " + receiveChannel.state().name());
-
-//            if (receiveChannel.state() == DataChannel.State.OPEN) {
-//                String data = "from receiveChannel to sendChannel";
-//                ByteBuffer buffer = ByteBuffer.wrap(data.getBytes());
-//                receiveChannel.send(new DataChannel.Buffer(buffer, false));
-//            }
-
-        }
-
-        @Override
-        public void onMessage(DataChannel.Buffer buffer) {
-            Log.d(TAG, "remoteDataChannel onMessage()");
-
-            if (!buffer.binary) {
-                int limit = buffer.data.limit();
-                byte[] datas = new byte[limit];
-                buffer.data.get(datas);
-                remoteMessageReceived = new String(datas);
-
-            }
-        }
-
-
-    };
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -373,117 +83,204 @@ public class LocalPeerConnectionActivity extends AppCompatActivity {
         peerConnectionFactory = new PeerConnectionFactory();
         Log.d(TAG, "has yet to create local and remote peerConnection");
 
+        //My code
+        initializePeerConnectionFactory();
+        initializePeerConnections();
+
+        //Initialize the activity elements
+        mCalleEditText = (EditText) findViewById(R.id.calleEditText);
+        mStatusTextView= (TextView) findViewById(R.id.statusTextView);
+        mMessageEditText = (EditText) findViewById(R.id.messageEditText);
+        mSendButton      = (Button) findViewById(R.id.messageButton);
+
+
+        // Initializes the send button listener
+        initializeSendButtonListener();
+
+        // This handle with the signaling
+        handleWithSignalingServer();
     }
 
-    @Override
-    protected void onResume() {
-        super.onResume();
+    // My code
+    //-------------------------------------------------------------------------------------------------------------
 
-        Log.d(TAG, "onResume()");
-
-        List<PeerConnection.IceServer> iceServers = new LinkedList<>();
-        iceServers.add(new PeerConnection.IceServer("stun:stun.l.google.com:19302"));
-
-        MediaConstraints constraints = new MediaConstraints();
-        localPeerConnection = peerConnectionFactory.createPeerConnection(iceServers, constraints, localPeerConnectionObserver);
-        remotePeerConnection = peerConnectionFactory.createPeerConnection(iceServers, constraints, remotePeerConnectionObserver);
-
-        sendChannel = localPeerConnection.createDataChannel("RTCDataChannel", new DataChannel.Init());
-        sendChannel.registerObserver(localDataChannelObserver);
-
-        localPeerConnection.createOffer(localSessionObserver, constraints);
-
-        setSendButtonListeners();
-
-
+    private void handleWithSignalingServer(){
+        connection.getmSocket().on("message", args -> {
+            try {
+                JSONObject message = (JSONObject) args[0];
+                updateStatus(message.getString("type"));
+                if(message.getString("type").equals("offer")){
+                    User caller = new User();
+                    peerConnection.setRemoteDescription(new SimpleSdpObserver(), new SessionDescription(
+                            OFFER,
+                            message.getString("sdp")
+                    ));
+                    caller.setName(message.getString("username"));
+                    doAnswer(caller.getName());
+                }else if(message.getString("type").equals("answer")){
+                    // Eu pego o SDP recebido pelo servidor e coloco no meu remote description
+                    peerConnection.setRemoteDescription(new SimpleSdpObserver(), new SessionDescription(
+                            ANSWER,
+                            message.getString("sdp")));
+                }
+            }catch(JSONException ex){
+                Log.d(TAG, ex.getMessage());
+            }
+        });
     }
 
-    private void setSendButtonListeners() {
-
-        Button localSend = (Button) findViewById(R.id.localPeerButtonSend);
-        assert localSend != null;
-
-        localSend.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                EditText messageET = (EditText) findViewById(R.id.localPeerSendMessageEditText);
-                assert messageET != null;
-
-                String message = messageET.getText().toString();
-                if (!message.isEmpty()) {
-                    if (sendChannel.state() == DataChannel.State.OPEN) {
-                        ByteBuffer buffer = ByteBuffer.wrap(message.getBytes());
-                        sendChannel.send(new DataChannel.Buffer(buffer, false));
-                    }
-                }
-            }
-        });
 
 
-        Button remoteSend = (Button) findViewById(R.id.remotePeerSendButton);
-        assert remoteSend != null;
-
-        remoteSend.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                EditText messageET = (EditText) findViewById(R.id.remotePeerSendMessageEditText);
-                assert messageET != null;
-
-                String message = messageET.getText().toString();
-                if (!message.isEmpty()) {
-                    if (receiveChannel.state() == DataChannel.State.OPEN) {
-                        ByteBuffer buffer = ByteBuffer.wrap(message.getBytes());
-                        receiveChannel.send(new DataChannel.Buffer(buffer, false));
-                    }
-                }
-            }
-        });
-
-        Timer timer = new Timer("Timer");
-        timer.schedule(new TimerTask() {
+    private void updateStatus(final String message){
+        runOnUiThread(new Runnable() {
             @Override
             public void run() {
-                runOnUiThread(new Runnable() {
-                    @Override
-                    public void run() {
-                        if (!localMessageReceived.equals(localLastMessageReceived)) {
-                            TextView messageReceived = (TextView) findViewById(R.id.localPeerMessageReceived);
-                            messageReceived.setText(localMessageReceived);
-                            localLastMessageReceived = localMessageReceived;
-                        }
-
-                        if (!remoteMessageReceived.equals(remoteLastMessageReceived)) {
-                            TextView messageReceived = (TextView) findViewById(R.id.remotePeerMessageReceived);
-                            messageReceived.setText(remoteMessageReceived);
-                            remoteLastMessageReceived = remoteMessageReceived;
-                        }
-                    }
-                });
+                mStatusTextView.setText(message);
             }
-        }, 0, 1000);
+        });
     }
 
-    @Override
-    protected void onDestroy() {
-        super.onDestroy();
+    private void initializeSendButtonListener(){
+        mSendButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+//                ByteBuffer buffer = ByteBuffer.wrap(mMessageEditText.getText().toString().getBytes());
+//                sendChannel.send(new DataChannel.Buffer(buffer,false));
 
-        if (sendChannel != null) {
-            sendChannel.close();
-            sendChannel.unregisterObserver();
-        }
-
-        if (receiveChannel != null) {
-            receiveChannel.close();
-            receiveChannel.unregisterObserver();
-        }
-
-        if (localPeerConnection != null)
-            localPeerConnection.close();
-
-        if (remotePeerConnection != null)
-            remotePeerConnection.close();
-
+                if(!Utils.editTextIsEmpty(mCalleEditText)){
+                    doCall(Utils.getTextFromEditText(mCalleEditText));
+                }
+            }
+        });
     }
 
+    //-------------------------------------------------------------------------------------------------------------
 
+    private void initializePeerConnectionFactory() {
+        PeerConnectionFactory.initializeAndroidGlobals(this, true, true, true);
+        peerConnectionFactory = new PeerConnectionFactory();
+    }
+    private void initializePeerConnections() {
+        peerConnection = createPeerConnection(peerConnectionFactory);
+    }
+
+    private PeerConnection createPeerConnection(PeerConnectionFactory factory) {
+        ArrayList<PeerConnection.IceServer> iceServers = new ArrayList<>();
+        iceServers.add(new PeerConnection.IceServer("stun:stun.l.google.com:19302"));
+
+        PeerConnection.RTCConfiguration rtcConfig = new PeerConnection.RTCConfiguration(iceServers);
+        MediaConstraints pcConstraints = new MediaConstraints();
+
+        PeerConnection.Observer pcObserver = new PeerConnection.Observer() {
+            @Override
+            public void onSignalingChange(PeerConnection.SignalingState signalingState) {
+                Log.d(TAG, "onSignalingChange: ");
+            }
+
+            @Override
+            public void onIceConnectionChange(PeerConnection.IceConnectionState iceConnectionState) {
+                Log.d(TAG, "onIceConnectionChange: ");
+            }
+
+            @Override
+            public void onIceConnectionReceivingChange(boolean b) {
+                Log.d(TAG, "onIceConnectionReceivingChange: ");
+            }
+
+            @Override
+            public void onIceGatheringChange(PeerConnection.IceGatheringState iceGatheringState) {
+                Log.d(TAG, "onIceGatheringChange: ");
+            }
+
+            @Override
+            public void onIceCandidate(IceCandidate iceCandidate) {
+                Log.d(TAG, "onIceCandidate: ");
+                JSONObject message = new JSONObject();
+                // Toda vez que eu obtenho um ICE candidate eu envio para o servidor
+                try {
+                    message.put("type", "candidate");
+                    message.put("label", iceCandidate.sdpMLineIndex);
+                    message.put("id", iceCandidate.sdpMid);
+                    message.put("candidate", iceCandidate.sdp);
+
+                    Log.d(TAG, "onIceCandidate: sending candidate " + message);
+                    //sendMessage(message);
+                } catch (JSONException e) {
+                    e.printStackTrace();
+                }
+            }
+
+
+            @Override
+            public void onAddStream(MediaStream mediaStream) {
+            }
+
+            @Override
+            public void onRemoveStream(MediaStream mediaStream) {
+                Log.d(TAG, "onRemoveStream: ");
+            }
+
+            @Override
+            public void onDataChannel(DataChannel dataChannel) {
+                Log.d(TAG, "onDataChannel: ");
+            }
+
+            @Override
+            public void onRenegotiationNeeded() {
+                Log.d(TAG, "onRenegotiationNeeded: ");
+            }
+        };
+
+        return factory.createPeerConnection(rtcConfig, pcConstraints, pcObserver);
+    }
+
+    private void doCall(String to) {
+        MediaConstraints sdpMediaConstraints = new MediaConstraints();
+
+        // Cria uma oferta e manda para o servidor
+        peerConnection.createOffer(new SimpleSdpObserver() {
+            @Override
+            public void onCreateSuccess(SessionDescription sessionDescription) {
+                Log.d(TAG, "onCreateSuccess: ");
+                peerConnection.setLocalDescription(new SimpleSdpObserver(), sessionDescription);
+                JSONObject message = new JSONObject();
+                try {
+                    message.put("username",Buffer.getUserBuffer().getName());
+                    message.put("id", Buffer.getUserBuffer().getSocketId());
+                    message.put("to", to);
+                    message.put("type", "offer");
+                    message.put("sdp", sessionDescription.description);
+                    connection.sendMessageToServer("message",message);
+
+                    updateStatus("Enviei uma oferta");
+                } catch (JSONException e) {
+                    e.printStackTrace();
+                }
+            }
+        }, sdpMediaConstraints);
+    }
+
+    private void doAnswer(String to) {
+        Log.d(TAG, "doAnswer: Entrei aqui");
+        // Cria a resposta
+        peerConnection.createAnswer(new SimpleSdpObserver() {
+            @Override
+            public void onCreateSuccess(SessionDescription sessionDescription) {
+                peerConnection.setLocalDescription(new SimpleSdpObserver(), sessionDescription);
+                JSONObject message = new JSONObject();
+                try {
+                    message.put("username", Buffer.getUserBuffer().getName());
+                    message.put("id", Buffer.getUserBuffer().getSocketId());
+                    message.put("to", to);
+                    message.put("type", "answer");
+                    message.put("sdp", sessionDescription.description);
+                    // Envia para o servidor
+                    connection.sendMessageToServer("message",message);
+                    updateStatus("Recebi uma resposta");
+                } catch (JSONException e) {
+                    e.printStackTrace();
+                }
+            }
+        }, new MediaConstraints());
+    }
 }

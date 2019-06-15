@@ -2,7 +2,7 @@
 <project version="4">
   <component name="ProjectModuleManager">
     <modules>
-      <module fileurl="file://$PROJECT_DIR$/WebRTC.iml" filepath="$PROJECT_DIR$/WebRTC.iml" />
+      <module fileurl="file://$PROJECT_DIR$/Ubiloc-rtc.iml" filepath="$PROJECT_DIR$/Ubiloc-rtc.iml" />
       <module fileurl="file://$PROJECT_DIR$/app/app.iml" filepath="$PROJECT_DIR$/app/app.iml" />
       <module fileurl="file://$PROJECT_DIR$/greta.signaling/greta.signaling.iml" filepath="$PROJECT_DIR$/greta.signaling/greta.signaling.iml" />
     </modules>
