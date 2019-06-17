@@ -42,10 +42,11 @@ import static org.webrtc.SessionDescription.Type.OFFER;
 public class LocalPeerConnectionActivity extends AppCompatActivity {
 
     //My vars
-    private final String MESSAGE = "message";
-    private final String RESPONSE = "server_response";
-    private final String SET_ID    = "set_id";
+    private final String _ICE = "_ice";
+    private final String _OFFER = "_offer";
+    private final String _ANSWER    = "_answer";
     private Connection connection = Connection.getInstance();
+    private boolean connectionEstablished = false;
 
     // Activity elements
     private EditText mCalleEditText;
@@ -66,8 +67,7 @@ public class LocalPeerConnectionActivity extends AppCompatActivity {
     private static final String TAG = "Debug";
 
 
-    private DataChannel sendChannel;
-    private DataChannel receiveChannel;
+    private DataChannel dataChannel;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -101,32 +101,50 @@ public class LocalPeerConnectionActivity extends AppCompatActivity {
         handleWithSignalingServer();
     }
 
+
     // My code
     //-------------------------------------------------------------------------------------------------------------
 
     private void handleWithSignalingServer(){
-        connection.getmSocket().on("message", args -> {
+
+        connection.getmSocket().on(_OFFER, args -> {
             try {
+                updateStatus("Recebi uma oferta");
                 JSONObject message = (JSONObject) args[0];
-                updateStatus(message.getString("type"));
-                if(message.getString("type").equals("offer")){
-                    User caller = new User();
-                    peerConnection.setRemoteDescription(new SimpleSdpObserver(), new SessionDescription(
-                            OFFER,
-                            message.getString("sdp")
-                    ));
-                    caller.setName(message.getString("username"));
-                    doAnswer(caller.getName());
-                }else if(message.getString("type").equals("answer")){
-                    // Eu pego o SDP recebido pelo servidor e coloco no meu remote description
-                    peerConnection.setRemoteDescription(new SimpleSdpObserver(), new SessionDescription(
-                            ANSWER,
-                            message.getString("sdp")));
-                }
-            }catch(JSONException ex){
-                Log.d(TAG, ex.getMessage());
+                User caller = new User();
+                peerConnection.setRemoteDescription(new SimpleSdpObserver(), new SessionDescription(
+                        OFFER,
+                        message.getString("sdp")
+                ));
+                caller.setName(message.getString("callerusername"));
+                doAnswer(caller.getName());
+                updateStatus("Enviei uma resposta");
+            }catch (JSONException ex){
+                Log.d(TAG, "handleWithSignalingServer: " + ex.getMessage());
+            }
+        }).on(_ANSWER, args -> {
+            try{
+                JSONObject message = (JSONObject) args[0];
+                // Eu pego o SDP recebido pelo servidor e coloco no meu remote description
+                peerConnection.setRemoteDescription(new SimpleSdpObserver(), new SessionDescription(
+                        ANSWER,
+                        message.getString("sdp")));
+
+                connectionEstablished = true;
+            }catch (JSONException ex){
+                Log.d(TAG, "handleWithSignalingServer: " + ex.getMessage());
+            }
+        }).on(_ICE, args ->{
+            try{
+                JSONObject message = (JSONObject) args[0];
+                Log.d(TAG, "connectToSignallingServer: receiving candidates");
+                IceCandidate candidate = new IceCandidate(message.getString("id"), message.getInt("label"), message.getString("candidate"));
+                peerConnection.addIceCandidate(candidate);
+            }catch (JSONException ex){
+                Log.d(TAG, "handleWithSignalingServer: " + ex.getMessage());
             }
         });
+
     }
 
 
@@ -147,8 +165,13 @@ public class LocalPeerConnectionActivity extends AppCompatActivity {
 //                ByteBuffer buffer = ByteBuffer.wrap(mMessageEditText.getText().toString().getBytes());
 //                sendChannel.send(new DataChannel.Buffer(buffer,false));
 
-                if(!Utils.editTextIsEmpty(mCalleEditText)){
+                if(!Utils.editTextIsEmpty(mCalleEditText) && !connectionEstablished){
                     doCall(Utils.getTextFromEditText(mCalleEditText));
+                }
+
+                if(connectionEstablished){
+                    ByteBuffer data = ByteBuffer.wrap(mMessageEditText.getText().toString().getBytes());
+                    dataChannel.send(new DataChannel.Buffer(data,false));
                 }
             }
         });
@@ -162,6 +185,27 @@ public class LocalPeerConnectionActivity extends AppCompatActivity {
     }
     private void initializePeerConnections() {
         peerConnection = createPeerConnection(peerConnectionFactory);
+        dataChannel = peerConnection.createDataChannel("sendDataChannel", new DataChannel.Init());
+        dataChannel.registerObserver(new DataChannel.Observer() {
+            @Override
+            public void onBufferedAmountChange(long l) {
+
+            }
+
+            @Override
+            public void onStateChange() {
+                if(dataChannel.state() == DataChannel.State.OPEN){
+                    updateStatus("Deu bom");
+                }else{
+                    updateStatus("Deu ruim");
+                }
+            }
+
+            @Override
+            public void onMessage(DataChannel.Buffer buffer) {
+
+            }
+        });
     }
 
     private PeerConnection createPeerConnection(PeerConnectionFactory factory) {
@@ -204,7 +248,8 @@ public class LocalPeerConnectionActivity extends AppCompatActivity {
                     message.put("candidate", iceCandidate.sdp);
 
                     Log.d(TAG, "onIceCandidate: sending candidate " + message);
-                    //sendMessage(message);
+                    connection.sendMessageToServer(_ICE,message);
+
                 } catch (JSONException e) {
                     e.printStackTrace();
                 }
@@ -223,6 +268,22 @@ public class LocalPeerConnectionActivity extends AppCompatActivity {
             @Override
             public void onDataChannel(DataChannel dataChannel) {
                 Log.d(TAG, "onDataChannel: ");
+                dataChannel.registerObserver(new DataChannel.Observer() {
+                    @Override
+                    public void onBufferedAmountChange(long l) {
+
+                    }
+
+                    @Override
+                    public void onStateChange() {
+
+                    }
+
+                    @Override
+                    public void onMessage(DataChannel.Buffer buffer) {
+                        updateStatus(buffer.toString());
+                    }
+                });
             }
 
             @Override
@@ -241,18 +302,14 @@ public class LocalPeerConnectionActivity extends AppCompatActivity {
         peerConnection.createOffer(new SimpleSdpObserver() {
             @Override
             public void onCreateSuccess(SessionDescription sessionDescription) {
-                Log.d(TAG, "onCreateSuccess: ");
                 peerConnection.setLocalDescription(new SimpleSdpObserver(), sessionDescription);
                 JSONObject message = new JSONObject();
                 try {
-                    message.put("username",Buffer.getUserBuffer().getName());
-                    message.put("id", Buffer.getUserBuffer().getSocketId());
                     message.put("to", to);
                     message.put("type", "offer");
                     message.put("sdp", sessionDescription.description);
-                    connection.sendMessageToServer("message",message);
 
-                    updateStatus("Enviei uma oferta");
+                    connection.sendMessageToServer(_OFFER,message);
                 } catch (JSONException e) {
                     e.printStackTrace();
                 }
@@ -261,7 +318,6 @@ public class LocalPeerConnectionActivity extends AppCompatActivity {
     }
 
     private void doAnswer(String to) {
-        Log.d(TAG, "doAnswer: Entrei aqui");
         // Cria a resposta
         peerConnection.createAnswer(new SimpleSdpObserver() {
             @Override
@@ -269,14 +325,11 @@ public class LocalPeerConnectionActivity extends AppCompatActivity {
                 peerConnection.setLocalDescription(new SimpleSdpObserver(), sessionDescription);
                 JSONObject message = new JSONObject();
                 try {
-                    message.put("username", Buffer.getUserBuffer().getName());
-                    message.put("id", Buffer.getUserBuffer().getSocketId());
                     message.put("to", to);
                     message.put("type", "answer");
                     message.put("sdp", sessionDescription.description);
                     // Envia para o servidor
-                    connection.sendMessageToServer("message",message);
-                    updateStatus("Recebi uma resposta");
+                    connection.sendMessageToServer(_ANSWER,message);
                 } catch (JSONException e) {
                     e.printStackTrace();
                 }

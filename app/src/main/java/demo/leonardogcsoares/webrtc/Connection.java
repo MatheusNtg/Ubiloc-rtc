@@ -62,7 +62,7 @@ public class Connection extends AppCompatActivity {
                     try{
                         message.put("username",user.getName());
                         message.put("id",user.getSocketId());
-                        mSocket.emit("RESPONSE", message);
+                        mSocket.emit("FLAG", message);
                     }catch(JSONException ex){
                         Log.d(TAG, "connect: " + ex.getMessage());
                     }
