@@ -30,6 +30,7 @@ import org.webrtc.VideoTrack;
 
 import java.net.URISyntaxException;
 import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.List;
@@ -52,7 +53,6 @@ public class LocalPeerConnectionActivity extends AppCompatActivity {
     private EditText mCalleEditText;
     private Button mSendButton;
     private TextView mStatusTextView;
-    private EditText mMessageEditText;
 
 
 
@@ -90,7 +90,6 @@ public class LocalPeerConnectionActivity extends AppCompatActivity {
         //Initialize the activity elements
         mCalleEditText = (EditText) findViewById(R.id.calleEditText);
         mStatusTextView= (TextView) findViewById(R.id.statusTextView);
-        mMessageEditText = (EditText) findViewById(R.id.messageEditText);
         mSendButton      = (Button) findViewById(R.id.messageButton);
 
 
@@ -109,7 +108,6 @@ public class LocalPeerConnectionActivity extends AppCompatActivity {
 
         connection.getmSocket().on(_OFFER, args -> {
             try {
-                updateStatus("Recebi uma oferta");
                 JSONObject message = (JSONObject) args[0];
                 User caller = new User();
                 peerConnection.setRemoteDescription(new SimpleSdpObserver(), new SessionDescription(
@@ -118,7 +116,6 @@ public class LocalPeerConnectionActivity extends AppCompatActivity {
                 ));
                 caller.setName(message.getString("callerusername"));
                 doAnswer(caller.getName());
-                updateStatus("Enviei uma resposta");
             }catch (JSONException ex){
                 Log.d(TAG, "handleWithSignalingServer: " + ex.getMessage());
             }
@@ -168,11 +165,6 @@ public class LocalPeerConnectionActivity extends AppCompatActivity {
                 if(!Utils.editTextIsEmpty(mCalleEditText) && !connectionEstablished){
                     doCall(Utils.getTextFromEditText(mCalleEditText));
                 }
-
-                if(connectionEstablished){
-                    ByteBuffer data = ByteBuffer.wrap(mMessageEditText.getText().toString().getBytes());
-                    dataChannel.send(new DataChannel.Buffer(data,false));
-                }
             }
         });
     }
@@ -194,11 +186,6 @@ public class LocalPeerConnectionActivity extends AppCompatActivity {
 
             @Override
             public void onStateChange() {
-                if(dataChannel.state() == DataChannel.State.OPEN){
-                    updateStatus("Deu bom");
-                }else{
-                    updateStatus("Deu ruim");
-                }
             }
 
             @Override
@@ -281,7 +268,8 @@ public class LocalPeerConnectionActivity extends AppCompatActivity {
 
                     @Override
                     public void onMessage(DataChannel.Buffer buffer) {
-                        updateStatus(buffer.toString());
+                        String s = StandardCharsets.UTF_8.decode(buffer.data).toString();
+                        updateStatus(s);
                     }
                 });
             }

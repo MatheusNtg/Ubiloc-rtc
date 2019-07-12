@@ -1,18 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:tools="http://schemas.android.com/tools" android:layout_width="match_parent"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
     android:layout_height="match_parent"
-        tools:context=".LocalPeerConnectionActivity"
     android:orientation="vertical"
-    >
+    tools:context=".LocalPeerConnectionActivity">
 
-
-    <TextView
-        android:id="@+id/statusTextView"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="Status"
-        android:textSize="18sp" />
 
     <EditText
         android:id="@+id/calleEditText"
@@ -22,17 +16,25 @@
         android:hint="Pra quem?"
         android:inputType="textPersonName" />
 
-    <EditText
-        android:id="@+id/messageEditText"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:ems="10"
-        android:hint="Qual a mensagem ?"
-        android:inputType="textPersonName" />
-
     <Button
         android:id="@+id/messageButton"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Enviar Mensagem" />
+        android:text="Conectar" />
+
+    <android.support.constraint.ConstraintLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent">
+
+        <TextView
+            android:id="@+id/statusTextView"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textSize="20sp"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintHorizontal_bias="0.5"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent" />
+    </android.support.constraint.ConstraintLayout>
 </LinearLayout>
